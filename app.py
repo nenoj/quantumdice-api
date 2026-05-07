@@ -1,4 +1,5 @@
 import os
+import random
 import threading
 from collections import deque
 
@@ -12,6 +13,16 @@ app = Flask(__name__)
 
 ANU_URL = "https://api.quantumnumbers.anu.edu.au"
 BATCH_SIZE = 64
+
+FALLBACK_BYTES = [
+    196, 63, 168, 122, 249, 64, 213, 18, 124, 116, 108, 16, 37, 34, 57, 243,
+    148, 147, 125, 137, 185, 237, 138, 114, 202, 243, 52, 147, 3, 14, 142, 5,
+    98, 82, 17, 100, 123, 143, 129, 62, 129, 155, 21, 224, 152, 227, 47, 109,
+    194, 77, 67, 5, 63, 181, 134, 104, 205, 62, 30, 242, 106, 137, 161, 126,
+    87, 196, 243, 106, 240, 114, 191, 97, 119, 46, 216, 0, 75, 83, 3, 139,
+    241, 38, 66, 249, 181, 82, 248, 98, 55, 28, 117, 242, 51, 135, 27, 128,
+    174, 217, 253, 226,
+]
 
 _cache = deque()
 _lock = threading.Lock()
@@ -32,19 +43,19 @@ def _fetch_batch():
 def _get_quantum_byte():
     with _lock:
         if not _cache:
-            numbers = _fetch_batch()
+            try:
+                numbers = _fetch_batch()
+            except Exception:
+                return random.choice(FALLBACK_BYTES), "fallback"
             _cache.extend(numbers)
-        return _cache.popleft()
+        return _cache.popleft(), "quantum"
 
 
 @app.route("/roll")
 def roll():
-    try:
-        byte = _get_quantum_byte()
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    byte, source = _get_quantum_byte()
     result = (byte % 6) + 1
-    return jsonify({"roll": result})
+    return jsonify({"roll": result, "source": source})
 
 
 if __name__ == "__main__":
