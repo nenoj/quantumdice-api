@@ -4,6 +4,7 @@ import threading
 from collections import deque
 
 import requests
+from apscheduler.schedulers.background import BackgroundScheduler
 from dotenv import load_dotenv
 from flask import Flask, jsonify
 
@@ -12,7 +13,7 @@ load_dotenv()
 app = Flask(__name__)
 
 ANU_URL = "https://api.quantumnumbers.anu.edu.au"
-BATCH_SIZE = 64
+BATCH_SIZE = 1024
 
 FALLBACK_BYTES = [
     196, 63, 168, 122, 249, 64, 213, 18, 124, 116, 108, 16, 37, 34, 57, 243,
@@ -40,15 +41,21 @@ def _fetch_batch():
     return resp.json()["data"]
 
 
+def _refresh_cache():
+    try:
+        numbers = _fetch_batch()
+        with _lock:
+            _cache.clear()
+            _cache.extend(numbers)
+    except Exception:
+        pass  # keep existing cache if ANU is unreachable
+
+
 def _get_quantum_byte():
     with _lock:
-        if not _cache:
-            try:
-                numbers = _fetch_batch()
-            except Exception:
-                return random.choice(FALLBACK_BYTES), "fallback"
-            _cache.extend(numbers)
-        return _cache.popleft(), "quantum"
+        if _cache:
+            return _cache.popleft(), "quantum"
+    return random.choice(FALLBACK_BYTES), "fallback"
 
 
 @app.route("/roll")
@@ -57,6 +64,12 @@ def roll():
     result = (byte % 6) + 1
     return jsonify({"roll": result, "source": source})
 
+
+_refresh_cache()
+
+scheduler = BackgroundScheduler()
+scheduler.add_job(_refresh_cache, "interval", hours=24)
+scheduler.start()
 
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 5000))
