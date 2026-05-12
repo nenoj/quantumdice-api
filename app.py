@@ -65,6 +65,13 @@ def roll():
     return jsonify({"roll": result, "source": source})
 
 
+@app.route("/flip")
+def flip():
+    byte, source = _get_quantum_byte()
+    result = "heads" if byte % 2 == 0 else "tails"
+    return jsonify({"result": result, "source": source})
+
+
 _refresh_cache()
 
 scheduler = BackgroundScheduler()
